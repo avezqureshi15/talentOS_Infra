@@ -27,6 +27,26 @@ services:
     networks:
       - talentos-net
 
+  # ── PostgreSQL ─────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: talentos
+      POSTGRES_PASSWORD: talentos
+      POSTGRES_DB: talentos
+      SUPABASE_URL: ${SUPABASE_URL}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U talentos"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - talentos-net
+
   # ── MCP Tool Server ────────────────────────────────────────────────
   mcp:
     build: ./talentOS_MCP
@@ -45,6 +65,8 @@ services:
     depends_on:
       mcp:
         condition: service_started
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -68,6 +90,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -87,7 +111,7 @@ services:
       sh -c "
         uv run alembic stamp --purge 0013 2>/dev/null;
         uv run alembic upgrade head 2>/dev/null;
-        uv run python3 -m seed.run_seed 2>/dev/null;
+        if [ \"$APP_ENV\" = \"development\" ]; then uv run python3 -m seed.run_seed; fi 2>/dev/null;
         uv run uvicorn app.main:app --host 0.0.0.0 --port 8001
       "
     networks:
@@ -147,6 +171,9 @@ services:
       - be
     networks:
       - talentos-net
+
+volumes:
+  postgres_data:
 
 networks:
   talentos-net:

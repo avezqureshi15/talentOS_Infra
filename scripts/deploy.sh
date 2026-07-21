@@ -30,9 +30,10 @@ else
   git clone "$INFRA_REPO"
 fi
 
-# Copy compose file and proxy config to root
+# Copy compose file, proxy config, and scripts to root
 cp talentOS-infra/docker-compose.yml .
 cp -r talentOS-infra/proxy .
+cp -r talentOS-infra/scripts .
 cp -n talentOS-infra/.env.example .env 2>/dev/null || true
 
 # Clone or pull each service repo
