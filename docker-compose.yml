@@ -109,7 +109,7 @@ services:
       FRONTEND_BASE_URL: http://${LINODE_PUBLIC_IP}
     command: >
       sh -c "
-        uv run alembic stamp --purge 0013 2>/dev/null;
+        uv run alembic stamp head 2>/dev/null;
         uv run alembic upgrade head 2>/dev/null;
         if [ \"$APP_ENV\" = \"development\" ]; then uv run python3 -m seed.run_seed; fi 2>/dev/null;
         uv run uvicorn app.main:app --host 0.0.0.0 --port 8001
