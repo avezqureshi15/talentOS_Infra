@@ -7,7 +7,7 @@ set -euo pipefail
 # ──────────────────────────────────────────────────────────────────────────────
 
 ROOT_DIR="/opt/talentos"
-INFRA_REPO="https://github.com/avezqureshi15/talentOS-infra.git"
+INFRA_REPO="https://github.com/avezqureshi15/talentOS_Infra.git"
 SERVICE_REPOS=(
   "talentOS_BE|https://github.com/avezqureshi15/talentOS_BE.git"
   "talentOS_FE|https://github.com/avezqureshi15/talentOS_FE.git"
