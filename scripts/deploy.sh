@@ -38,7 +38,7 @@ checkout_branch() {
 
   echo "[$dir] Switching to branch '$branch'..."
 
-  git fetch origin
+  git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
 
   # Create branch locally if not exists
   if git show-ref --verify --quiet "refs/heads/$branch"; then
@@ -67,10 +67,8 @@ if [ -d "talentOS_Infra/.git" ]; then
   cd ..
 else
   echo "[infra] Cloning..."
-  git clone "$INFRA_REPO" "talentOS_Infra"
+  git clone --branch "$INFRA_BRANCH" "$INFRA_REPO" "talentOS_Infra"
   cd talentOS_Infra
-  git checkout "$INFRA_BRANCH" 2>/dev/null || true
-  cd ..
 fi
 
 # Copy compose + configs
@@ -102,10 +100,8 @@ for entry in "${SERVICE_REPOS[@]}"; do
     cd ..
   else
     echo "[$dir] Cloning (branch: $branch)..."
-    git clone "$repo" "$dir"
+    git clone --branch "$branch" "$repo" "$dir"
     cd "$dir"
-    git checkout "$branch" 2>/dev/null || true
-    cd ..
   fi
 done
 
