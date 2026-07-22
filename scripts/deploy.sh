@@ -8,6 +8,7 @@ set -euo pipefail
 
 ROOT_DIR="/opt/talentos"
 INFRA_REPO="https://github.com/avezqureshi15/talentOS_Infra.git"
+
 SERVICE_REPOS=(
   "talentOS_BE|https://github.com/avezqureshi15/talentOS_BE.git"
   "talentOS_FE|https://github.com/avezqureshi15/talentOS_FE.git"
@@ -17,6 +18,7 @@ SERVICE_REPOS=(
 
 # ── Source branch configuration ──────────────────────────────────────────
 BRANCH_ENV="$(dirname "$0")/branches.env"
+
 if [ -f "$BRANCH_ENV" ]; then
   # shellcheck source=./branches.env
   . "$BRANCH_ENV"
@@ -33,9 +35,18 @@ fi
 checkout_branch() {
   local dir="$1"
   local branch="$2"
+
   echo "[$dir] Switching to branch '$branch'..."
+
   git fetch origin
-  git checkout "$branch"
+
+  # Create branch locally if not exists
+  if git show-ref --verify --quiet "refs/heads/$branch"; then
+    git checkout "$branch"
+  else
+    git checkout -b "$branch" "origin/$branch"
+  fi
+
   git pull origin "$branch"
 }
 
@@ -45,23 +56,34 @@ echo "=== talentOS Deploy ==="
 mkdir -p "$ROOT_DIR"
 cd "$ROOT_DIR"
 
-# Clone or pull infra repo
-if [ -d "talentOS-infra/.git" ]; then
+# ──────────────────────────────────────────────────────────────────────────────
+# INFRA REPO (FIXED NAME: talentOS_Infra)
+# ──────────────────────────────────────────────────────────────────────────────
+
+if [ -d "talentOS_Infra/.git" ]; then
   echo "[infra] Pulling latest..."
-  cd talentOS-infra && checkout_branch "infra" "$INFRA_BRANCH" && cd ..
+  cd talentOS_Infra
+  checkout_branch "talentOS_Infra" "$INFRA_BRANCH"
+  cd ..
 else
   echo "[infra] Cloning..."
-  git clone "$INFRA_REPO"
-  cd talentOS-infra && git checkout "$INFRA_BRANCH" 2>/dev/null || true && cd ..
+  git clone "$INFRA_REPO" "talentOS_Infra"
+  cd talentOS_Infra
+  git checkout "$INFRA_BRANCH" 2>/dev/null || true
+  cd ..
 fi
 
-# Copy compose file, proxy config, and scripts to root
-cp talentOS-infra/docker-compose.yml .
-cp -r talentOS-infra/proxy .
-cp -r talentOS-infra/scripts .
-cp -n talentOS-infra/.env.example .env 2>/dev/null || true
+# Copy compose + configs
+echo "[infra] Syncing configs..."
+cp talentOS_Infra/docker-compose.yml .
+cp -r talentOS_Infra/proxy . 2>/dev/null || true
+cp -r talentOS_Infra/scripts . 2>/dev/null || true
+cp -n talentOS_Infra/.env.example .env 2>/dev/null || true
 
-# Clone or pull each service repo
+# ──────────────────────────────────────────────────────────────────────────────
+# SERVICES
+# ──────────────────────────────────────────────────────────────────────────────
+
 for entry in "${SERVICE_REPOS[@]}"; do
   IFS="|" read -r dir repo <<< "$entry"
 
@@ -87,9 +109,16 @@ for entry in "${SERVICE_REPOS[@]}"; do
   fi
 done
 
-# Pull latest images and rebuild
+# ──────────────────────────────────────────────────────────────────────────────
+# DOCKER DEPLOY
+# ──────────────────────────────────────────────────────────────────────────────
+
 echo "=== Building & restarting services ==="
+
+# Pull latest images (if using remote images)
 docker compose pull
+
+# Rebuild and restart (minimal downtime)
 docker compose up -d --build
 
 echo "=== Deploy complete ==="
