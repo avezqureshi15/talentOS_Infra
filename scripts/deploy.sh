@@ -117,5 +117,8 @@ docker compose pull
 # Rebuild and restart (minimal downtime)
 docker compose up -d --build
 
+# Restart proxy so nginx re-resolves service hostnames (container IPs change on recreate)
+docker compose restart proxy 2>/dev/null || docker restart talentos-proxy-1 || true
+
 echo "=== Deploy complete ==="
 docker compose ps
