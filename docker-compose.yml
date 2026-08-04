@@ -97,9 +97,8 @@ services:
     environment:
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
       KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
-      KAFKA_TOPIC_EVALUATION: resume.evaluation.queue
-      KAFKA_TOPIC_EVALUATION_DLQ: resume.evaluation.dlq
-      KAFKA_CONSUMER_GROUP: resume-evaluators
+      KAFKA_TOPIC_EVALUATION_ASYNC: resume.evaluation.async
+      KAFKA_TOPIC_EVALUATION_ASYNC_DLQ: resume.evaluation.async.dlq
       KAFKA_EVALUATION_PARTITIONS: "6"
       AI_SERVICE_BASE_URL: http://ai:8003
       AI_SERVICE_TIMEOUT: "60"
@@ -117,8 +116,48 @@ services:
     networks:
       - talentos-net
 
-  # ── Backend Worker (Kafka consumer) ────────────────────────────────
-  worker:
+  # ── Redpanda Console (Kafka UI) ────────────────────────────────────
+  console:
+    image: redpandadata/console:v2.7.2
+    restart: unless-stopped
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+      CONSOLE_ACCESS_TYPE: public
+    networks:
+      - talentos-net
+
+  # ── Backend Worker — Full Evaluation (Kafka consumer) ──────────────
+  worker-full:
+    build: ./talentOS_BE
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      be:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+      KAFKA_TOPIC_EVALUATION_ASYNC: resume.evaluation.async
+      KAFKA_TOPIC_EVALUATION_ASYNC_DLQ: resume.evaluation.async.dlq
+      KAFKA_EVALUATION_PARTITIONS: "6"
+      AI_SERVICE_BASE_URL: http://ai:8003
+      AI_SERVICE_TIMEOUT: "60"
+      ATS_THRESHOLD_DEFAULT: "70"
+      EVALUATION_MAX_ATTEMPTS: "3"
+      EVALUATION_MIN_RESUME_CHARS: "100"
+    command: uv run python3 -m app.workers.evaluation_full_worker
+    networks:
+      - talentos-net
+
+  # ── Backend Worker — AI Interview Report (Kafka consumer) ──────────────
+  worker-interview-report:
     build: ./talentOS_BE
     restart: unless-stopped
     depends_on:
@@ -130,16 +169,14 @@ services:
       - .env
     environment:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
-      KAFKA_TOPIC_EVALUATION: resume.evaluation.queue
-      KAFKA_TOPIC_EVALUATION_DLQ: resume.evaluation.dlq
-      KAFKA_CONSUMER_GROUP: resume-evaluators
-      KAFKA_EVALUATION_PARTITIONS: "6"
+      KAFKA_TOPIC_INTERVIEW_REPORT_ASYNC: ${KAFKA_TOPIC_INTERVIEW_REPORT_ASYNC:-ai.interview.report.async}
+      KAFKA_TOPIC_INTERVIEW_REPORT_ASYNC_DLQ: ${KAFKA_TOPIC_INTERVIEW_REPORT_ASYNC_DLQ:-ai.interview.report.async.dlq}
+      KAFKA_INTERVIEW_REPORT_PARTITIONS: ${KAFKA_INTERVIEW_REPORT_PARTITIONS:-6}
       AI_SERVICE_BASE_URL: http://ai:8003
       AI_SERVICE_TIMEOUT: "60"
-      ATS_THRESHOLD_DEFAULT: "70"
-      EVALUATION_MAX_ATTEMPTS: "3"
-      EVALUATION_MIN_RESUME_CHARS: "100"
-    command: uv run python3 -m app.workers.evaluation_worker
+      INTERVIEW_REPORT_MAX_TRANSCRIPT_CHARS: ${INTERVIEW_REPORT_MAX_TRANSCRIPT_CHARS:-150000}
+      INTERVIEW_REPORT_MAX_ATTEMPTS: ${INTERVIEW_REPORT_MAX_ATTEMPTS:-3}
+    command: uv run python3 -m app.workers.ai_interview_report_worker
     networks:
       - talentos-net
 
@@ -150,7 +187,7 @@ services:
       args:
         VITE_BE_API_BASE_URL: /api/v1
         VITE_API_BASE_URL: ""
-        VITE_APP_URL: http://${VITE_APP_URL}
+        VITE_APP_URL: ${VITE_APP_URL}
         VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
         VITE_SLOT_DURATION_MINUTES: "30"
         VITE_AI_SCAN_ANIMATION: "false"
@@ -168,6 +205,7 @@ services:
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - ./proxy/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./talentOS_BE/docs/architecture.md:/usr/share/nginx/html/architecture.md:ro
     depends_on:
       - fe
       - be
