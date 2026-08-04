@@ -125,7 +125,9 @@ services:
     environment:
       KAFKA_BROKERS: redpanda:29092
       CONSOLE_ACCESS_TYPE: public
-      CONSOLE_BASE_PATH: /kafka
+      SERVER_BASEPATH: /kafka
+      SERVER_STRIPPREFIX: "true"
+      SERVER_SETBASEPATHFROMXFORWARDEDPREFIX: "true"
     networks:
       - talentos-net
 
