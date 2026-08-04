@@ -205,7 +205,7 @@ services:
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - ./proxy/nginx.conf:/etc/nginx/conf.d/default.conf
-      - ./talentOS_BE/docs/architecture.md:/usr/share/nginx/html/architecture.md:ro
+      - ./talentOS_BE/docs:/usr/share/nginx/html/docs:ro
     depends_on:
       - fe
       - be
