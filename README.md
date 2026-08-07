@@ -97,8 +97,8 @@ docker compose up -d --build
 
 ```bash
 # On a fresh Linode:
-git clone https://github.com/avezqureshi15/talentOS-infra.git
-cd talentOS-infra
+git clone git@github.com:avezqureshi15/talentOS_Infra.git
+cd talentOS_Infra
 cp .env.example .env
 # Edit .env with production secrets
 chmod +x scripts/deploy.sh
@@ -106,9 +106,44 @@ chmod +x scripts/deploy.sh
 ```
 
 The `deploy.sh` script:
-1. Clones/pulls all service repos
+1. Clones/pulls all service repos (from per-env branches, see below)
 2. Copies `docker-compose.yml`, `proxy/`, and `scripts/` to `/opt/talentos/`
 3. Runs `docker compose up -d --build`
+
+### Deploying via GitHub Actions
+
+`deploy.sh` is environment- and component-aware, and can be driven manually or
+through the CI/CD workflow (`.github/workflows/deploy.yml`):
+
+- **Manual (old way):** `./scripts/deploy.sh` — UAT, both, env-default branches.
+- **Manual (new way):** `./scripts/deploy.sh prod frontend --fe-branch my-feature`
+- **GitHub Actions:** `Actions` tab → *Deploy talentOS* → pick inputs.
+
+Workflow inputs:
+
+| Input | Options | Notes |
+|-------|---------|-------|
+| `environment` | `uat`, `prod` (add more in the YAML) | Branch defaults come from `scripts/branches.<env>.env` |
+| `component` | `both`, `frontend`, `backend` | Only builds/pulls the repos it needs |
+| `be_branch`, `fe_branch`, `ai_branch`, `mcp_branch` | any branch | Optional; blank = that env's default |
+
+**One-time setup per environment (GitHub → Settings → Environments):**
+- Create an environment named `uat` and one named `prod`, each with secrets:
+  `SSH_HOST`, `SSH_USER`, `SSH_KEY` (SSH private key of a user with docker
+  access on the target Linode). The SSH user must be able to `git pull` in
+  `/opt/talentos/talentOS_Infra`.
+- To add a NEW environment later: add a dropdown option in `deploy.yml`,
+  create `scripts/branches.<env>.env`, and a GitHub Environment with its secrets.
+
+**Restricting branches (optional, off by default):**
+`scripts/branch-policy.json` holds per-env, per-repo allowlists. Empty list =
+any branch allowed. To lock a production env later, e.g.:
+
+```jsonc
+{ "prod": { "fe": ["main", "release/*"], "be": ["main"] } }
+```
+
+### Quick Start
 
 ### First-Time Database
 

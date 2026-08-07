@@ -1,0 +1,103 @@
+name: Deploy talentOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment (branch defaults come from scripts/branches.<env>.env)
+        required: true
+        type: choice
+        options:
+          - uat
+          - prod
+      component:
+        description: What to deploy
+        required: true
+        type: choice
+        default: both
+        options:
+          - both
+          - frontend
+          - backend
+      be_branch:
+        description: Backend branch (blank = env default)
+        required: false
+        type: string
+      fe_branch:
+        description: Frontend branch (blank = env default)
+        required: false
+        type: string
+      ai_branch:
+        description: AI branch (blank = env default)
+        required: false
+        type: string
+      mcp_branch:
+        description: MCP branch (blank = env default)
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Resolves to the GitHub Environment named like the input (uat / prod).
+    # Create each env in Settings > Environments with secrets SSH_HOST, SSH_USER, SSH_KEY.
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout infra repo
+        uses: actions/checkout@v4
+
+      - name: Resolve effective branches (input > env default)
+        id: branches
+        shell: bash
+        env:
+          ENV_NAME: ${{ inputs.environment }}
+          BE_IN: ${{ inputs.be_branch }}
+          FE_IN: ${{ inputs.fe_branch }}
+          AI_IN: ${{ inputs.ai_branch }}
+          MCP_IN: ${{ inputs.mcp_branch }}
+        run: |
+          set -euo pipefail
+          ENV_FILE="scripts/branches.${ENV_NAME}.env"
+          if [ -f "$ENV_FILE" ]; then
+            set -a; . "$ENV_FILE"; set +a
+          fi
+          echo "be_branch=${BE_IN:-${BE_BRANCH:-main}}" >> "$GITHUB_OUTPUT"
+          echo "fe_branch=${FE_IN:-${FE_BRANCH:-main}}" >> "$GITHUB_OUTPUT"
+          echo "ai_branch=${AI_IN:-${AI_BRANCH:-main}}" >> "$GITHUB_OUTPUT"
+          echo "mcp_branch=${MCP_IN:-${MCP_BRANCH:-main}}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate branch policy
+        shell: bash
+        env:
+          ENV_NAME: ${{ inputs.environment }}
+          BE_BRANCH: ${{ steps.branches.outputs.be_branch }}
+          FE_BRANCH: ${{ steps.branches.outputs.fe_branch }}
+          AI_BRANCH: ${{ steps.branches.outputs.ai_branch }}
+          MCP_BRANCH: ${{ steps.branches.outputs.mcp_branch }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/validate_branch_policy.py "$ENV_NAME" \
+            --be-branch "$BE_BRANCH" \
+            --fe-branch "$FE_BRANCH" \
+            --ai-branch "$AI_BRANCH" \
+            --mcp-branch "$MCP_BRANCH"
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/talentos/talentOS_Infra
+            git pull origin main
+            bash scripts/deploy.sh "${{ inputs.environment }}" "${{ inputs.component }}" \
+              --be-branch "${{ steps.branches.outputs.be_branch }}" \
+              --fe-branch "${{ steps.branches.outputs.fe_branch }}" \
+              --ai-branch "${{ steps.branches.outputs.ai_branch }}" \
+              --mcp-branch "${{ steps.branches.outputs.mcp_branch }}"
