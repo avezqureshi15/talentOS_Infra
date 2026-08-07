@@ -134,10 +134,10 @@ Every run (and manual scripts) also:
   with a warning if the repo is private and no auth is available)
 
 **One-time setup per environment (GitHub → Settings → Environments):**
-- Create an environment named `uat` and one named `prod`, each with secrets:
-  `SSH_HOST`, `SSH_USER`, `SSH_KEY` (SSH private key of a user with docker
-  access on the target Linode). The SSH user must be able to `git pull` in
-  `/opt/talentos/talentOS_Infra`.
+- Create an environment named `uat` and one named `prod`, each with secrets
+  `SSH_HOST`, `SSH_USER`, and either `SSH_PASSWORD` (password auth, default)
+  or `SSH_KEY` (private key auth). The SSH user needs docker access (`docker
+  compose` works) and must be able to `git pull` in `/opt/talentos/talentOS_Infra`.
 - To add a NEW environment later: add a dropdown option in `deploy.yml`,
   create `scripts/branches.<env>.env`, and a GitHub Environment with its secrets.
 
