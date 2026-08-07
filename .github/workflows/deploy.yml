@@ -14,11 +14,13 @@ on:
         description: What to deploy
         required: true
         type: choice
-        default: both
+        default: all
         options:
-          - both
+          - all
           - frontend
           - backend
+          - ai
+          - mcp
       be_branch:
         description: Backend branch (blank = env default)
         required: false
@@ -86,6 +88,34 @@ jobs:
             --ai-branch "$AI_BRANCH" \
             --mcp-branch "$MCP_BRANCH"
 
+      - name: Check branches exist on remote
+        shell: bash
+        env:
+          BE_BRANCH: ${{ steps.branches.outputs.be_branch }}
+          FE_BRANCH: ${{ steps.branches.outputs.fe_branch }}
+          AI_BRANCH: ${{ steps.branches.outputs.ai_branch }}
+          MCP_BRANCH: ${{ steps.branches.outputs.mcp_branch }}
+        run: |
+          set -euo pipefail
+
+          check_branch() {
+            local repo="$1" branch="$2" label="$3"
+            echo "Checking $label: $branch (repo: $repo)"
+            if git ls-remote --heads "https://github.com/$repo.git" "$branch" 2>/dev/null | grep -q "refs/heads/$branch$"; then
+              echo "  OK: '$branch' exists"
+            elif git ls-remote --heads "https://github.com/$repo.git" HEAD >/dev/null 2>&1; then
+              echo "  FAIL: '$branch' not found in $repo"
+              exit 1
+            else
+              echo "  WARN: cannot reach $repo (private repo? auth required) — skipping existence check"
+            fi
+          }
+
+          check_branch "avezqureshi15/talentOS_BE" "$BE_BRANCH" "be"
+          check_branch "avezqureshi15/talentOS_FE" "$FE_BRANCH" "fe"
+          check_branch "punith-webknot/talentOS_AI" "$AI_BRANCH" "ai"
+          check_branch "punith-webknot/talentOS_MCP" "$MCP_BRANCH" "mcp"
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -94,6 +124,11 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             set -euo pipefail
+            if [ ! -d /opt/talentos/talentOS_Infra/.git ]; then
+              echo "[setup] first run — cloning talentOS_Infra..."
+              mkdir -p /opt/talentos
+              git clone https://github.com/avezqureshi15/talentOS_Infra.git /opt/talentos/talentOS_Infra
+            fi
             cd /opt/talentos/talentOS_Infra
             git pull origin main
             bash scripts/deploy.sh "${{ inputs.environment }}" "${{ inputs.component }}" \

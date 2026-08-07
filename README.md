@@ -115,7 +115,7 @@ The `deploy.sh` script:
 `deploy.sh` is environment- and component-aware, and can be driven manually or
 through the CI/CD workflow (`.github/workflows/deploy.yml`):
 
-- **Manual (old way):** `./scripts/deploy.sh` — UAT, both, env-default branches.
+- **Manual (old way):** `./scripts/deploy.sh` — UAT, all, env-default branches.
 - **Manual (new way):** `./scripts/deploy.sh prod frontend --fe-branch my-feature`
 - **GitHub Actions:** `Actions` tab → *Deploy talentOS* → pick inputs.
 
@@ -124,8 +124,14 @@ Workflow inputs:
 | Input | Options | Notes |
 |-------|---------|-------|
 | `environment` | `uat`, `prod` (add more in the YAML) | Branch defaults come from `scripts/branches.<env>.env` |
-| `component` | `both`, `frontend`, `backend` | Only builds/pulls the repos it needs |
+| `component` | `all`, `frontend`, `backend`, `ai`, `mcp` | Only builds/pulls the repos it needs |
 | `be_branch`, `fe_branch`, `ai_branch`, `mcp_branch` | any branch | Optional; blank = that env's default |
+
+Every run (and manual scripts) also:
+- Fails fast if the env name has no `branches.<env>.env`
+- Rejects branch names with spaces/shell metacharacters
+- Verifies each chosen branch actually **exists** in its repo (skips the check
+  with a warning if the repo is private and no auth is available)
 
 **One-time setup per environment (GitHub → Settings → Environments):**
 - Create an environment named `uat` and one named `prod`, each with secrets:

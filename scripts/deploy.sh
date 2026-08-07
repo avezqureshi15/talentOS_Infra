@@ -6,12 +6,12 @@ set -euo pipefail
 # Run on the Linode to update services and restart.
 #
 # Usage:
-#   bash scripts/deploy.sh                                          # defaults: uat, both
+#   bash scripts/deploy.sh                                          # defaults: uat, all
 #   bash scripts/deploy.sh <env> <component> [branch overrides...]
 #
 #   <env>       = environment name, e.g. uat | prod (branch defaults come from
 #                 scripts/branches.<env>.env — add a file to support a new env)
-#   <component> = frontend | backend | both   (default: both)
+#   <component> = all | frontend | backend | ai | mcp   (default: all)
 #
 #   Branch overrides (optional, win over the env default file):
 #     --be-branch <branch>   --fe-branch <branch>
@@ -20,7 +20,7 @@ set -euo pipefail
 # Examples:
 #   bash scripts/deploy.sh
 #   bash scripts/deploy.sh uat frontend --fe-branch my-feature
-#   bash scripts/deploy.sh prod both
+#   bash scripts/deploy.sh prod all
 # ──────────────────────────────────────────────────────────────────────────────
 
 ROOT_DIR="/opt/talentos"
@@ -35,7 +35,7 @@ SERVICE_REPOS=(
 
 # ── Parse arguments ───────────────────────────────────────────────────────
 ENV_NAME="${1:-uat}"
-COMPONENT="${2:-both}"
+COMPONENT="${2:-all}"
 shift 2 || true
 
 BE_OVERRIDE=""
@@ -53,24 +53,21 @@ while [ $# -gt 0 ]; do
 done
 
 case "$COMPONENT" in
-  frontend|backend|both) ;;
-  *) echo "[error] unsupported component '$COMPONENT' (expected: frontend | backend | both)"; exit 1 ;;
+  frontend|backend|all|ai|mcp) ;;
+  *) echo "[error] unsupported component '$COMPONENT' (expected: frontend | backend | all | ai | mcp)"; exit 1 ;;
 esac
 
-# ── Per-environment branch defaults ───────────────────────────────────────
-# Script sources scripts/branches.<env>.env. Missing file => defaults (main).
+# ── Fail fast on unknown environment ──────────────────────────────────────
+# A new environment = create scripts/branches.<env>.env (see branches.uat.env).
 BRANCH_ENV="$(dirname "$0")/branches.${ENV_NAME}.env"
 
-if [ -f "$BRANCH_ENV" ]; then
-  # shellcheck source=./branches.env
-  . "$BRANCH_ENV"
-else
-  echo "[warn] $BRANCH_ENV not found — using defaults (main)"
-  BE_BRANCH=main
-  FE_BRANCH=main
-  MCP_BRANCH=main
-  AI_BRANCH=main
+if [ ! -f "$BRANCH_ENV" ]; then
+  echo "[error] environment '$ENV_NAME' is not configured."
+  echo "        Expected '$BRANCH_ENV' — create it (copy branches.uat.env) or fix the env name."
+  exit 1
 fi
+
+. "$BRANCH_ENV"
 INFRA_BRANCH="${INFRA_BRANCH:-main}"
 
 # CLI overrides win over the env defaults
@@ -78,6 +75,23 @@ INFRA_BRANCH="${INFRA_BRANCH:-main}"
 [ -n "$FE_OVERRIDE" ]  && FE_BRANCH="$FE_OVERRIDE"
 [ -n "$AI_OVERRIDE" ]  && AI_BRANCH="$AI_OVERRIDE"
 [ -n "$MCP_OVERRIDE" ] && MCP_BRANCH="$MCP_OVERRIDE"
+
+# ── Validate branch names (no shell metacharacters / spaces) ──────────────
+validate_branch_name() {
+  local name="$1"
+  case "$name" in
+    *[!A-Za-z0-9._/-]*)
+      echo "[error] invalid branch name '$name' (allowed chars: A-Z a-z 0-9 . _ / -)"
+      exit 1
+      ;;
+  esac
+}
+
+validate_branch_name "$BE_BRANCH"
+validate_branch_name "$FE_BRANCH"
+validate_branch_name "$AI_BRANCH"
+validate_branch_name "$MCP_BRANCH"
+validate_branch_name "$INFRA_BRANCH"
 
 # ── Component → repos + compose services ──────────────────────────────────
 case "$COMPONENT" in
@@ -89,7 +103,15 @@ case "$COMPONENT" in
     SELECTED_REPOS=("talentOS_BE" "talentOS_AI" "talentOS_MCP")
     BUILD_SERVICES=("be" "ai" "mcp" "worker-full" "worker-interview-report")
     ;;
-  both)
+  ai)
+    SELECTED_REPOS=("talentOS_AI")
+    BUILD_SERVICES=("ai")
+    ;;
+  mcp)
+    SELECTED_REPOS=("talentOS_MCP")
+    BUILD_SERVICES=("mcp")
+    ;;
+  all)
     SELECTED_REPOS=("talentOS_BE" "talentOS_FE" "talentOS_AI" "talentOS_MCP")
     BUILD_SERVICES=()   # empty = full stack rebuild
     ;;
