@@ -174,16 +174,25 @@ cp -n talentOS_Infra/.env.example .env 2>/dev/null || true
 # These are regenerated on every deploy so edits to .env are always applied.
 mkdir -p .bao-keys && chmod 700 .bao-keys
 
-if [ -n "${BAO_TOKEN_USER:-}" ] && [ -n "${BAO_TOKEN_PASS:-}" ]; then
+# The main .env is NOT sourced by this script — read the OpenBao bootstrap
+# vars straight from the file (strips optional surrounding double quotes).
+get_env() { grep -E "^$1=" .env 2>/dev/null | tail -n 1 | sed -E 's/^[^=]*=//' | sed -E 's/^"(.*)"$/\1/'; }
+BAO_TOKEN_USER="${BAO_TOKEN_USER:-$(get_env BAO_TOKEN_USER)}"
+BAO_TOKEN_PASS="${BAO_TOKEN_PASS:-$(get_env BAO_TOKEN_PASS)}"
+BAO_TOKEN_ALLOWED_IPS="${BAO_TOKEN_ALLOWED_IPS:-$(get_env BAO_TOKEN_ALLOWED_IPS)}"
+
+if [ -n "$BAO_TOKEN_USER" ] && [ -n "$BAO_TOKEN_PASS" ]; then
   printf '%s\n' "$BAO_TOKEN_USER:$(openssl passwd -apr1 "$BAO_TOKEN_PASS")" > .bao-htpasswd
-  chmod 600 .bao-htpasswd
+  # 644 (not 600): the nginx WORKER (user nginx) reads this at request time,
+  # and bind-mounts don't remap ownership — 600 root-only causes nginx 500.
+  chmod 644 .bao-htpasswd
 else
   echo "[infra] WARN: BAO_TOKEN_USER / BAO_TOKEN_PASS unset — /bao-token/* will be disabled (nginx 500)."
   : > .bao-htpasswd
 fi
 
 : > .bao-allowlist.conf
-for ip in ${BAO_TOKEN_ALLOWED_IPS:-}; do
+for ip in $BAO_TOKEN_ALLOWED_IPS; do
   [ -n "$ip" ] && printf 'allow %s;\n' "$ip" >> .bao-allowlist.conf
 done
 printf 'deny all;\n' >> .bao-allowlist.conf
