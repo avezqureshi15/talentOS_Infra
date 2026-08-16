@@ -267,7 +267,9 @@ On the Linode, a single `/opt/talentos/.env` file holds ALL environment variable
                     │    /opt/talentos/.env │
                     │                      │
                     │  DATABASE_URL=...     │
+                    │  LLM_PROVIDER=groq    │
                     │  OPENAI_API_KEY=...   │
+                    │  GROQ_API_KEY=...     │
                     │  JWT_SECRET=...       │
                     │  GOOGLE_CLIENT_ID=... │
                     │  ...                  │
@@ -279,7 +281,7 @@ On the Linode, a single `/opt/talentos/.env` file holds ALL environment variable
            │                   │                   │
            ▼                   ▼                   ▼
     be container          ai container       LINODE_PUBLIC_IP used in:
-    (reads DATABASE_URL)  (reads OPENAI_API_KEY)  - CORS_ALLOW_ORIGINS
+    (reads DATABASE_URL)  (reads LLM_PROVIDER + API key)  - CORS_ALLOW_ORIGINS
                                                   - FRONTEND_BASE_URL
                                                   - VITE_APP_URL build arg
 ```

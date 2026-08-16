@@ -34,6 +34,10 @@ Deployment configuration for the talentOS stack — a single-node Docker Compose
                               │ Redpanda │  :9092
                               │ (Kafka)  │
                               └──────────┘
+                              ┌──────────┐
+                              │ OpenBao  │  :8200
+                              │ (secrets)│
+                              └──────────┘
 ```
 
 ### Proxy Routing
@@ -54,6 +58,7 @@ Deployment configuration for the talentOS stack — a single-node Docker Compose
 | **worker** | talentos-worker (Dockerfile) | — | Python / Kafka |
 | **postgres** | postgres:17-alpine | 5432 | PostgreSQL |
 | **redpanda** | redpandadata/redpanda:v24.2.7 | 9092 | Kafka-compatible |
+| **openbao** | openbao/openbao (openbao/) | 8200 (host-local) | Secrets manager |
 
 ## Repositories
 
@@ -172,11 +177,72 @@ docker compose up -d
 |----------|-------------|
 | `DATABASE_URL` | Local Postgres connection string (default: `postgresql://talentos:talentos@postgres:5432/talentos`) |
 | `SUPABASE_URL` | Supabase connection string for one-time migration |
-| `OPENAI_API_KEY` | OpenAI API key for AI agent |
+| `LLM_PROVIDER` | LLM provider switch for the AI agent: `openai` or `groq` |
+| `OPENAI_API_KEY` | OpenAI API key (used when `LLM_PROVIDER=openai`) |
+| `GROQ_API_KEY` | Groq API key (used when `LLM_PROVIDER=groq`) |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `JWT_SECRET` | JWT signing secret |
 | `LINODE_PUBLIC_IP` | Server IP for CORS (use `localhost` for local dev) |
 | `APP_ENV` | `development` or `production` |
+
+## OpenBao (Secrets Management)
+
+talentOS uses [OpenBao](https://openbao.org) as a central, encrypted secrets
+store. The backend (`be` + workers) fetches credentials from OpenBao at
+startup instead of trusting `.env` — infra lives in `openbao/`.
+
+### How it works
+
+- The `openbao` container self-provisions on first boot
+  (`openbao/entrypoint.sh`): initialize → unseal → enable KV v2 at `secret/`
+  → write the `be-read` + `ai-read` ACL policies → seed secrets (injected
+  from `infra/.env`) → mint scoped service tokens.
+- The unseal key + root token persist in `./.bao-keys/` (root-only host dir,
+  `0600`) — **not** in the `bao-shared` volume, because `bao-shared` is mounted
+  into app containers and served by nginx. The `bao-shared` volume holds only
+  the scoped app tokens. Tokens are **read-only**
+  (`openbao/policies/be-read.hcl`, `openbao/policies/ai-read.hcl`) and only
+  cover their own namespaces: `secret/data/talentos/*` (backend) and
+  `secret/data/ai/*` (AI service).
+- `be`, `worker-full`, `worker-interview-report` mount `bao-shared` read-only
+  and use `BAO_ADDR=http://openbao:8200` + `BAO_TOKEN_FILE=/shared/be.token`.
+  `ai` uses `BAO_TOKEN_FILE=/shared/ai.token` and reads
+  `OPENAI_API_KEY` / `GROQ_API_KEY` / `DATABASE_URI` from OpenBao (no secrets
+  in its environment). The backend's `app/core/config.py` pulls its secrets at
+  startup; `GET /health` reports `"secretsSource": "openbao"` when active.
+- OpenBao is reachable on the compose network only; the host sees `:8200` on
+  `127.0.0.1:8200` for admin access.
+
+### Local dev (read secrets from the server — no `.env` secrets, no SSH)
+
+Server services use the docker network; **local dev machines** use the public
+routes exposed through nginx on the existing `talentos.webknot-dev.in` cert:
+
+- `GET https://talentos.webknot-dev.in/v1/*` — OpenBao API (IP-restricted)
+- `GET https://talentos.webknot-dev.in/bao-token/{be,ai}.token` — app tokens
+  (IP-restricted **and** basic-auth protected)
+
+Devs fetch their tokens with `curl -u <BAO_TOKEN_USER>:<BAO_TOKEN_PASS> ...`,
+then set `BAO_ADDR=https://talentos.webknot-dev.in` +
+`BAO_TOKEN_FILE=~/.talentos/{be,ai}.token` (+ `BAO_REQUIRED=true`) in their
+service `.env`. Full onboarding, IP-change, and secret-rotation runbooks live
+in [docs/openbao-ops.md](docs/openbao-ops.md).
+
+### Rotating a secret
+
+1. Change the value in `infra/.env`.
+2. `docker compose up -d openbao be` — openbao re-seeds on restart, `be`
+   restarts and fetches the new value.
+
+### Notes / production hardening
+
+- Demo uses a single unseal key (1 share / 1 threshold) stored in the
+  root-only host dir — use a real seal mechanism (cloud KMS / Shamir split
+  keys) for production.
+- The app token is evergreen (`-ttl=0`) — prefer short TTLs + renewal, or
+  AppRole / Kubernetes auth for workload identity.
+- `tls_disable = true` in `config.hcl` — nginx terminates public TLS; OpenBao
+  itself stays on the docker network + `127.0.0.1`.
 
 ## Useful Commands
 

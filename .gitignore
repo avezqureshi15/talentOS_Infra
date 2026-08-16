@@ -1,2 +1,7 @@
 .env
 *.log
+
+# OpenBao runtime artifacts (generated on the server by deploy.sh)
+.bao-keys/
+.bao-htpasswd
+.bao-allowlist.conf

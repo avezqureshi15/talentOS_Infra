@@ -164,7 +164,30 @@ echo "[infra] Syncing configs..."
 cp talentOS_Infra/docker-compose.yml .
 cp -r talentOS_Infra/proxy . 2>/dev/null || true
 cp -r talentOS_Infra/scripts . 2>/dev/null || true
+cp -r talentOS_Infra/openbao . 2>/dev/null || true
 cp -n talentOS_Infra/.env.example .env 2>/dev/null || true
+
+# ── OpenBao runtime artifacts (git-ignored, derived from .env) ──────────────
+# .bao-keys  → root-only host dir for the unseal key + root token (openbao only).
+# .bao-htpasswd → basic-auth credentials for the /bao-token/* download route.
+# .bao-allowlist.conf → nginx allow/deny for /v1/* + /bao-token/* (dev IPs).
+# These are regenerated on every deploy so edits to .env are always applied.
+mkdir -p .bao-keys && chmod 700 .bao-keys
+
+if [ -n "${BAO_TOKEN_USER:-}" ] && [ -n "${BAO_TOKEN_PASS:-}" ]; then
+  printf '%s\n' "$BAO_TOKEN_USER:$(openssl passwd -apr1 "$BAO_TOKEN_PASS")" > .bao-htpasswd
+  chmod 600 .bao-htpasswd
+else
+  echo "[infra] WARN: BAO_TOKEN_USER / BAO_TOKEN_PASS unset — /bao-token/* will be disabled (nginx 500)."
+  : > .bao-htpasswd
+fi
+
+: > .bao-allowlist.conf
+for ip in ${BAO_TOKEN_ALLOWED_IPS:-}; do
+  [ -n "$ip" ] && printf 'allow %s;\n' "$ip" >> .bao-allowlist.conf
+done
+printf 'deny all;\n' >> .bao-allowlist.conf
+chmod 600 .bao-allowlist.conf
 
 # ──────────────────────────────────────────────────────────────────────────
 # SERVICES (only repos needed for this component)
