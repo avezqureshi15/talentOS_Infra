@@ -79,6 +79,30 @@ services:
       MEETMIND_WEBHOOK_SECRET: ${MEETMIND_WEBHOOK_SECRET}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       SUPABASE_WEBHOOK_SECRET: ${SUPABASE_WEBHOOK_SECRET}
+      RH_API_KEY: ${RH_API_KEY}
+      SERVICE_API_KEY: ${SERVICE_API_KEY}
+      # dev namespace (local dev) — DEV_<KEY> overrides the value seeded under
+      # secret/data/dev/* (and ai-dev). Leave unset in .env to mirror the uat
+      # value (kept as a separate entry). DEV_DATABASE_URL / DEV_DATABASE_URI
+      # should point at the local Supabase.
+      DEV_JWT_SECRET: ${DEV_JWT_SECRET:-}
+      DEV_SECRETS_ENCRYPTION_KEY: ${DEV_SECRETS_ENCRYPTION_KEY:-}
+      DEV_DATABASE_URL: ${DEV_DATABASE_URL:-}
+      DEV_RESEND_API_KEY: ${DEV_RESEND_API_KEY:-}
+      DEV_SMTP_USERNAME: ${DEV_SMTP_USERNAME:-}
+      DEV_SMTP_PASSWORD: ${DEV_SMTP_PASSWORD:-}
+      DEV_GOOGLE_CLIENT_SECRET: ${DEV_GOOGLE_CLIENT_SECRET:-}
+      DEV_GOOGLE_SERVICE_ACCOUNT_JSON: ${DEV_GOOGLE_SERVICE_ACCOUNT_JSON:-}
+      DEV_GOOGLE_IMPERSONATION_EMAIL: ${DEV_GOOGLE_IMPERSONATION_EMAIL:-}
+      DEV_MEETMIND_API_TOKEN: ${DEV_MEETMIND_API_TOKEN:-}
+      DEV_MEETMIND_WEBHOOK_SECRET: ${DEV_MEETMIND_WEBHOOK_SECRET:-}
+      DEV_SUPABASE_SERVICE_ROLE_KEY: ${DEV_SUPABASE_SERVICE_ROLE_KEY:-}
+      DEV_SUPABASE_WEBHOOK_SECRET: ${DEV_SUPABASE_WEBHOOK_SECRET:-}
+      DEV_RH_API_KEY: ${DEV_RH_API_KEY:-}
+      DEV_SERVICE_API_KEY: ${DEV_SERVICE_API_KEY:-}
+      DEV_OPENAI_API_KEY: ${DEV_OPENAI_API_KEY:-}
+      DEV_GROQ_API_KEY: ${DEV_GROQ_API_KEY:-}
+      DEV_DATABASE_URI: ${DEV_DATABASE_URI:-}
     volumes:
       - bao-data:/bao/data       # encrypted secrets at rest
       - bao-shared:/shared       # scoped app tokens (be.token / ai.token) only

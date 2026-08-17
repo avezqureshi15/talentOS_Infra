@@ -107,7 +107,13 @@ echo "[openbao] policies 'be-read' + 'ai-read' written"
 seed_secret() {
   namespace="$1"
   key="$2"
-  value="$(eval "printf '%s' \"\${$key:-}\"")"
+  envvar="${3:-$key}"          # optional source env var (DEV_* override)
+  value="$(eval "printf '%s' \"\${$envvar:-}\"")"
+  if [ -z "$value" ] && [ "$envvar" != "$key" ]; then
+    # No DEV_* override — fall back to the base (uat) value so the dev
+    # namespace keeps its own independent entry with the shared value.
+    value="$(eval "printf '%s' \"\${$key:-}\"")"
+  fi
   if [ -n "$value" ]; then
     printf '%s' "$value" > /tmp/secret.val
     # `bao kv put` resolves `secret/<ns>/<key>` to the KV v2 API path
@@ -122,19 +128,38 @@ seed_secret() {
   fi
 }
 
-# Backend (be + workers) secrets — namespace `talentos`.
+# Backend (be + workers) secrets — namespace `talentos` (the UAT/deployed stack).
 for key in \
   JWT_SECRET SECRETS_ENCRYPTION_KEY DATABASE_URL \
   RESEND_API_KEY SMTP_USERNAME SMTP_PASSWORD \
   GOOGLE_CLIENT_SECRET GOOGLE_SERVICE_ACCOUNT_JSON GOOGLE_IMPERSONATION_EMAIL \
   MEETMIND_API_TOKEN MEETMIND_WEBHOOK_SECRET \
-  SUPABASE_SERVICE_ROLE_KEY SUPABASE_WEBHOOK_SECRET; do
+  SUPABASE_SERVICE_ROLE_KEY SUPABASE_WEBHOOK_SECRET \
+  RH_API_KEY SERVICE_API_KEY; do
   seed_secret talentos "$key"
 done
 
-# AI-service secrets — namespace `ai` (separate token + policy).
+# Backend dev namespace — `dev` (local dev). Independent of uat: every key is
+# its own entry, sourced from a DEV_<KEY> override (e.g. DEV_DATABASE_URL must
+# point at the local Supabase) falling back to the uat value when unset.
+for key in \
+  JWT_SECRET SECRETS_ENCRYPTION_KEY DATABASE_URL \
+  RESEND_API_KEY SMTP_USERNAME SMTP_PASSWORD \
+  GOOGLE_CLIENT_SECRET GOOGLE_SERVICE_ACCOUNT_JSON GOOGLE_IMPERSONATION_EMAIL \
+  MEETMIND_API_TOKEN MEETMIND_WEBHOOK_SECRET \
+  SUPABASE_SERVICE_ROLE_KEY SUPABASE_WEBHOOK_SECRET \
+  RH_API_KEY SERVICE_API_KEY; do
+  seed_secret dev "$key" "DEV_${key}"
+done
+
+# AI-service secrets — namespace `ai` (UAT/deployed; separate token + policy).
 for key in OPENAI_API_KEY GROQ_API_KEY DATABASE_URI; do
   seed_secret ai "$key"
+done
+
+# AI-service dev namespace — `ai-dev` (local dev), DEV_<KEY> override fallback.
+for key in OPENAI_API_KEY GROQ_API_KEY DATABASE_URI; do
+  seed_secret ai-dev "$key" "DEV_${key}"
 done
 
 # ── Scoped service tokens (evergreen for this demo) ────────────────────────
