@@ -44,6 +44,9 @@ Deployment configuration for the talentOS stack — a single-node Docker Compose
 
 - `/*` → **FE** (nginx serving static build)
 - `/api/*` → **BE** (FastAPI backend)
+- `/recruithub/hr` → **Recruithub HR** (minimal stack)
+- `/recruithub/candidate` → **Recruithub candidate**
+- `/recruithub/api` → **Recruithub API** (browser only; TalentOS BE uses Docker DNS)
 - `/health` → **BE** (health check, exact match)
 
 ### Services
@@ -62,7 +65,7 @@ Deployment configuration for the talentOS stack — a single-node Docker Compose
 
 ## Repositories
 
-The infra repo clones 4 service repos at deploy time:
+The infra repo clones 5 service repos at deploy time:
 
 | Repo | URL |
 |------|-----|
@@ -70,6 +73,79 @@ The infra repo clones 4 service repos at deploy time:
 | talentOS_FE | https://github.com/avezqureshi15/talentOS_FE.git |
 | talentOS_AI | https://github.com/punith-webknot/talentOS_AI.git |
 | talentOS_MCP | https://github.com/punith-webknot/talentOS_MCP.git |
+| talentOS_AI_II | https://github.com/avezqureshi15/talentOS_AI_II.git (Recruithub, minimal stack) |
+
+## Recruithub (co-located, minimal)
+
+Recruithub runs as a **second compose project** (`recruithub`) from `/opt/talentos/talentOS_AI_II/docker-compose.minimal.yml`. One of each service, Celery `--autoscale=3,1`. No Recruithub host ports.
+
+**Public (same TalentOS nginx / cert):**
+
+- `https://talentos.webknot-dev.in/` — TalentOS FE
+- `https://talentos.webknot-dev.in/recruithub/hr` — Recruithub HR
+- `https://talentos.webknot-dev.in/recruithub/candidate` — Recruithub candidate
+- `https://talentos.webknot-dev.in/recruithub/api` — Recruithub API for the **browser** only
+
+**Internal Docker DNS (`talentos_talentos-net`):**
+
+- TalentOS BE → Recruithub: set tenant `RH_SERVICE_URL` to `http://rh-api:8000`
+- Recruithub → TalentOS BE: `TALENTOS_BE_URL=http://be:8001` in Recruithub `.env.production`
+
+`frontend` / `backend` / `ai` / `mcp` deploys skip Recruithub. `all` and `recruithub` build it.
+
+### One-time host setup (before the old Recruithub servers are wiped)
+
+Do this on `172.235.29.16` as root. `deploy.sh` will **not** create secrets or copy the database.
+
+1. **Swap** (current 496 MB swap is full):
+
+```bash
+fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+```
+
+2. **Clone the Recruithub repo** (or let the first `recruithub` deploy clone it), then copy secrets from `172.235.26.25`:
+
+```bash
+# on the old Recruithub app server
+# seed.env and .env.production — scp them to:
+#   /opt/talentos/talentOS_AI_II/seed.env
+#   /opt/talentos/talentOS_AI_II/.env.production
+```
+
+Then rewrite Recruithub **seed.env** (not `.env.production`) so OpenBao has Docker DNS and TalentOS SMTP:
+
+- Copy [seed.env.example](https://github.com/avezqureshi15/talentOS_AI_II/blob/main/seed.env.example). Recruithub apps do **not** load `.env`.
+- Set Docker-DNS URLs: `TALENTOS_BE_URL=http://be:8001`, `DATABASE_URL` → `rh-postgres`, `REDIS_URL` → `rh-redis`.
+- **SMTP:** copy `SMTP_USERNAME` and `SMTP_PASSWORD` from `/opt/talentos/.env` into Recruithub `seed.env` (same mailbox). `SMTP_HOST=smtp.gmail.com`.
+- Confirm `TALENTOS_NETWORK` with `docker network ls` (usually `talentos_talentos-net`).
+
+On TalentOS, add `RH_SERVICE_URL=http://rh-api:8000` to `/opt/talentos/.env` (OpenBao seed only), then restart `openbao` + `be`.
+
+3. **Dump Postgres** from the old app server and restore after the first Recruithub `up`:
+
+```bash
+# old server
+docker exec ai_recruitment_postgres pg_dump -U postgres -d ai_recruitment -Fc > /tmp/rh.dump
+
+# TalentOS server (after recruithub postgres is healthy)
+docker compose --env-file /opt/talentos/talentOS_AI_II/.env.production \
+  -f /opt/talentos/talentOS_AI_II/docker-compose.minimal.yml --project-name recruithub \
+  exec -T rh-postgres pg_restore -U postgres -d ai_recruitment --clean --if-exists < /tmp/rh.dump
+```
+
+4. In TalentOS superadmin, set tenant **RH_SERVICE_URL** to `http://rh-api:8000`.
+
+5. Deploy: GitHub Action component `recruithub` (or `all`), or on the box:
+
+```bash
+bash /opt/talentos/talentOS_Infra/scripts/deploy.sh uat recruithub
+```
+
+No new DNS or certificates. Recruithub OpenBao is not published on the host (TalentOS already uses `127.0.0.1:8200`).
 
 ## Quick Start
 
@@ -129,8 +205,8 @@ Workflow inputs:
 | Input | Options | Notes |
 |-------|---------|-------|
 | `environment` | `uat`, `prod` (add more in the YAML) | Branch defaults come from `scripts/branches.<env>.env` |
-| `component` | `all`, `frontend`, `backend`, `ai`, `mcp` | Only builds/pulls the repos it needs |
-| `be_branch`, `fe_branch`, `ai_branch`, `mcp_branch` | any branch | Optional; blank = that env's default |
+| `component` | `all`, `frontend`, `backend`, `ai`, `mcp`, `recruithub` | Only builds/pulls the repos it needs |
+| `be_branch`, `fe_branch`, `ai_branch`, `mcp_branch`, `rh_branch` | any branch | Optional; blank = that env's default |
 
 Every run (and manual scripts) also:
 - Fails fast if the env name has no `branches.<env>.env`

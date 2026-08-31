@@ -11,7 +11,7 @@ import json
 import pathlib
 import sys
 
-REPOS = ("be", "fe", "ai", "mcp")
+REPOS = ("be", "fe", "ai", "mcp", "rh")
 
 
 def load_env_defaults(env_name: str) -> dict:
@@ -62,7 +62,7 @@ def main() -> int:
 
     print(
         f"Branch policy OK for env '{args.env}' "
-        f"(be={resolved['be']}, fe={resolved['fe']}, ai={resolved['ai']}, mcp={resolved['mcp']})"
+        f"(be={resolved['be']}, fe={resolved['fe']}, ai={resolved['ai']}, mcp={resolved['mcp']}, rh={resolved['rh']})"
     )
     return 0
 

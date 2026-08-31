@@ -21,6 +21,7 @@ on:
           - backend
           - ai
           - mcp
+          - recruithub
       be_branch:
         description: Backend branch (blank = env default)
         required: false
@@ -35,6 +36,10 @@ on:
         type: string
       mcp_branch:
         description: MCP branch (blank = env default)
+        required: false
+        type: string
+      rh_branch:
+        description: Recruithub (talentOS_AI_II) branch (blank = env default)
         required: false
         type: string
 
@@ -61,6 +66,7 @@ jobs:
           FE_IN: ${{ inputs.fe_branch }}
           AI_IN: ${{ inputs.ai_branch }}
           MCP_IN: ${{ inputs.mcp_branch }}
+          RH_IN: ${{ inputs.rh_branch }}
         run: |
           set -euo pipefail
           ENV_FILE="scripts/branches.${ENV_NAME}.env"
@@ -71,6 +77,7 @@ jobs:
           echo "fe_branch=${FE_IN:-${FE_BRANCH:-main}}" >> "$GITHUB_OUTPUT"
           echo "ai_branch=${AI_IN:-${AI_BRANCH:-main}}" >> "$GITHUB_OUTPUT"
           echo "mcp_branch=${MCP_IN:-${MCP_BRANCH:-main}}" >> "$GITHUB_OUTPUT"
+          echo "rh_branch=${RH_IN:-${RH_BRANCH:-main}}" >> "$GITHUB_OUTPUT"
 
       - name: Validate branch policy
         shell: bash
@@ -80,13 +87,15 @@ jobs:
           FE_BRANCH: ${{ steps.branches.outputs.fe_branch }}
           AI_BRANCH: ${{ steps.branches.outputs.ai_branch }}
           MCP_BRANCH: ${{ steps.branches.outputs.mcp_branch }}
+          RH_BRANCH: ${{ steps.branches.outputs.rh_branch }}
         run: |
           set -euo pipefail
           python3 .github/scripts/validate_branch_policy.py "$ENV_NAME" \
             --be-branch "$BE_BRANCH" \
             --fe-branch "$FE_BRANCH" \
             --ai-branch "$AI_BRANCH" \
-            --mcp-branch "$MCP_BRANCH"
+            --mcp-branch "$MCP_BRANCH" \
+            --rh-branch "$RH_BRANCH"
 
       - name: Check branches exist on remote
         shell: bash
@@ -95,6 +104,7 @@ jobs:
           FE_BRANCH: ${{ steps.branches.outputs.fe_branch }}
           AI_BRANCH: ${{ steps.branches.outputs.ai_branch }}
           MCP_BRANCH: ${{ steps.branches.outputs.mcp_branch }}
+          RH_BRANCH: ${{ steps.branches.outputs.rh_branch }}
         run: |
           set -euo pipefail
 
@@ -115,6 +125,7 @@ jobs:
           check_branch "avezqureshi15/talentOS_FE" "$FE_BRANCH" "fe"
           check_branch "punith-webknot/talentOS_AI" "$AI_BRANCH" "ai"
           check_branch "punith-webknot/talentOS_MCP" "$MCP_BRANCH" "mcp"
+          check_branch "avezqureshi15/talentOS_AI_II" "$RH_BRANCH" "rh"
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
@@ -135,4 +146,5 @@ jobs:
               --be-branch "${{ steps.branches.outputs.be_branch }}" \
               --fe-branch "${{ steps.branches.outputs.fe_branch }}" \
               --ai-branch "${{ steps.branches.outputs.ai_branch }}" \
-              --mcp-branch "${{ steps.branches.outputs.mcp_branch }}"
+              --mcp-branch "${{ steps.branches.outputs.mcp_branch }}" \
+              --rh-branch "${{ steps.branches.outputs.rh_branch }}"

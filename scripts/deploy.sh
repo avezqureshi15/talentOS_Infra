@@ -11,11 +11,12 @@ set -euo pipefail
 #
 #   <env>       = environment name, e.g. uat | prod (branch defaults come from
 #                 scripts/branches.<env>.env — add a file to support a new env)
-#   <component> = all | frontend | backend | ai | mcp   (default: all)
+#   <component> = all | frontend | backend | ai | mcp | recruithub   (default: all)
 #
 #   Branch overrides (optional, win over the env default file):
 #     --be-branch <branch>   --fe-branch <branch>
 #     --ai-branch <branch>   --mcp-branch <branch>
+#     --rh-branch <branch>
 #
 # Examples:
 #   bash scripts/deploy.sh
@@ -31,6 +32,7 @@ SERVICE_REPOS=(
   "talentOS_FE|https://github.com/avezqureshi15/talentOS_FE.git"
   "talentOS_AI|https://github.com/punith-webknot/talentOS_AI.git"
   "talentOS_MCP|https://github.com/punith-webknot/talentOS_MCP.git"
+  "talentOS_AI_II|https://github.com/avezqureshi15/talentOS_AI_II.git"
 )
 
 # ── Parse arguments ───────────────────────────────────────────────────────
@@ -42,19 +44,21 @@ BE_OVERRIDE=""
 FE_OVERRIDE=""
 AI_OVERRIDE=""
 MCP_OVERRIDE=""
+RH_OVERRIDE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --be-branch)   BE_OVERRIDE="${2:?missing value for $1}"; shift 2 ;;
     --fe-branch)   FE_OVERRIDE="${2:?missing value for $1}"; shift 2 ;;
     --ai-branch)   AI_OVERRIDE="${2:?missing value for $1}"; shift 2 ;;
     --mcp-branch)  MCP_OVERRIDE="${2:?missing value for $1}"; shift 2 ;;
+    --rh-branch)   RH_OVERRIDE="${2:?missing value for $1}"; shift 2 ;;
     *) echo "[error] unknown argument: $1"; exit 1 ;;
   esac
 done
 
 case "$COMPONENT" in
-  frontend|backend|all|ai|mcp) ;;
-  *) echo "[error] unsupported component '$COMPONENT' (expected: frontend | backend | all | ai | mcp)"; exit 1 ;;
+  frontend|backend|all|ai|mcp|recruithub) ;;
+  *) echo "[error] unsupported component '$COMPONENT' (expected: frontend | backend | all | ai | mcp | recruithub)"; exit 1 ;;
 esac
 
 # ── Fail fast on unknown environment ──────────────────────────────────────
@@ -75,6 +79,8 @@ INFRA_BRANCH="${INFRA_BRANCH:-main}"
 [ -n "$FE_OVERRIDE" ]  && FE_BRANCH="$FE_OVERRIDE"
 [ -n "$AI_OVERRIDE" ]  && AI_BRANCH="$AI_OVERRIDE"
 [ -n "$MCP_OVERRIDE" ] && MCP_BRANCH="$MCP_OVERRIDE"
+[ -n "$RH_OVERRIDE" ]  && RH_BRANCH="$RH_OVERRIDE"
+RH_BRANCH="${RH_BRANCH:-main}"
 
 # ── Validate branch names (no shell metacharacters / spaces) ──────────────
 validate_branch_name() {
@@ -91,9 +97,12 @@ validate_branch_name "$BE_BRANCH"
 validate_branch_name "$FE_BRANCH"
 validate_branch_name "$AI_BRANCH"
 validate_branch_name "$MCP_BRANCH"
+validate_branch_name "$RH_BRANCH"
 validate_branch_name "$INFRA_BRANCH"
 
 # ── Component → repos + compose services ──────────────────────────────────
+DEPLOY_TALENTOS=1
+DEPLOY_RH=0
 case "$COMPONENT" in
   frontend)
     SELECTED_REPOS=("talentOS_FE")
@@ -111,9 +120,16 @@ case "$COMPONENT" in
     SELECTED_REPOS=("talentOS_MCP")
     BUILD_SERVICES=("mcp")
     ;;
+  recruithub)
+    SELECTED_REPOS=("talentOS_AI_II")
+    BUILD_SERVICES=()
+    DEPLOY_TALENTOS=0
+    DEPLOY_RH=1
+    ;;
   all)
-    SELECTED_REPOS=("talentOS_BE" "talentOS_FE" "talentOS_AI" "talentOS_MCP")
+    SELECTED_REPOS=("talentOS_BE" "talentOS_FE" "talentOS_AI" "talentOS_MCP" "talentOS_AI_II")
     BUILD_SERVICES=()   # empty = full stack rebuild
+    DEPLOY_RH=1
     ;;
 esac
 
@@ -137,7 +153,7 @@ checkout_branch() {
 }
 
 echo "=== talentOS Deploy (env: $ENV_NAME | component: $COMPONENT) ==="
-echo "    branches -> be: $BE_BRANCH | fe: $FE_BRANCH | ai: $AI_BRANCH | mcp: $MCP_BRANCH"
+echo "    branches -> be: $BE_BRANCH | fe: $FE_BRANCH | ai: $AI_BRANCH | mcp: $MCP_BRANCH | rh: $RH_BRANCH"
 
 # Ensure root directory exists
 mkdir -p "$ROOT_DIR"
@@ -210,6 +226,7 @@ for entry in "${SERVICE_REPOS[@]}"; do
     talentOS_FE) branch="${FE_BRANCH}" ;;
     talentOS_AI) branch="${AI_BRANCH}" ;;
     talentOS_MCP) branch="${MCP_BRANCH}" ;;
+    talentOS_AI_II) branch="${RH_BRANCH}" ;;
     *) branch="main" ;;
   esac
 
@@ -240,20 +257,60 @@ done
 # DOCKER DEPLOY
 # ──────────────────────────────────────────────────────────────────────────
 
+deploy_recruithub() {
+  local dir="$ROOT_DIR/talentOS_AI_II"
+  echo "=== Building & restarting Recruithub (minimal) ==="
+
+  if [ ! -f "$dir/seed.env" ]; then
+    echo "[error] $dir/seed.env is missing."
+    echo "        Copy seed.env.example and fill values. Apps do not use .env — OpenBao is the runtime store."
+    echo "        deploy.sh will not create secrets."
+    exit 1
+  fi
+
+  mkdir -p "$dir/.bao-keys" "$dir/.bao-shared" "$dir/backend/logs"
+  chmod 700 "$dir/.bao-keys"
+
+  local net
+  net="$(grep -E '^TALENTOS_NETWORK=' "$dir/seed.env" | tail -n1 | sed -E 's/^[^=]*=//' | sed -E 's/^"(.*)"$/\1/')"
+  net="${net:-talentos_talentos-net}"
+  if ! docker network inspect "$net" >/dev/null 2>&1; then
+    echo "[error] Docker network '$net' not found. Deploy TalentOS first so talentos-net exists."
+    echo "        Check: docker network ls"
+    exit 1
+  fi
+
+  cd "$dir"
+  docker compose --env-file seed.env -f docker-compose.minimal.yml --project-name recruithub up -d --build
+  echo "[recruithub] Running Alembic migrations"
+  docker compose --env-file seed.env -f docker-compose.minimal.yml --project-name recruithub \
+    run --rm --entrypoint alembic rh-api upgrade head
+  docker compose --env-file seed.env -f docker-compose.minimal.yml --project-name recruithub ps
+  cd "$ROOT_DIR"
+}
+
 echo "=== Building & restarting services (component: $COMPONENT) ==="
 
-if [ "${#BUILD_SERVICES[@]}" -eq 0 ]; then
-  # Pull latest images (if using remote images)
-  docker compose pull
-
-  # Rebuild and restart (minimal downtime)
-  docker compose up -d --build
+if [ "$DEPLOY_TALENTOS" = "1" ]; then
+  if [ "${#BUILD_SERVICES[@]}" -eq 0 ]; then
+    docker compose pull
+    docker compose up -d --build
+  else
+    docker compose up -d --build "${BUILD_SERVICES[@]}"
+  fi
 else
-  docker compose up -d --build "${BUILD_SERVICES[@]}"
+  echo "[talentos] skipped compose up (component: $COMPONENT)"
+fi
+
+if [ "$DEPLOY_RH" = "1" ]; then
+  deploy_recruithub
 fi
 
 # Restart proxy so nginx re-resolves service hostnames (container IPs change on recreate)
+cd "$ROOT_DIR"
 docker compose restart proxy 2>/dev/null || docker restart talentos-proxy-1 || true
 
 echo "=== Deploy complete (env: $ENV_NAME | component: $COMPONENT) ==="
-docker compose ps
+if [ "$DEPLOY_TALENTOS" = "1" ]; then
+  docker compose ps
+fi
