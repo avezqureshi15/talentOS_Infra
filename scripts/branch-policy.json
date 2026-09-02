@@ -1,17 +1,15 @@
 {
-  "_README": "Per-environment branch allowlists. An empty list (or a missing env key) means ANY branch is allowed \u2014 this is the default, keep it that way until you want to lock down. Fill values to restrict, e.g. \"prod\": { \"fe\": [\"main\", \"release/*\"] }. Wildcards use fnmatch syntax. Repos are be, fe, ai, mcp, rh.",
+  "_README": "Per-environment branch allowlists. An empty list (or a missing env key) means ANY branch is allowed \u2014 this is the default, keep it that way until you want to lock down. Fill values to restrict, e.g. \"prod\": { \"fe\": [\"main\", \"release/*\"] }. Wildcards use fnmatch syntax. Repos are be, fe, ai, mcp.",
   "uat": {
     "be": [],
     "fe": [],
     "ai": [],
-    "mcp": [],
-    "rh": []
+    "mcp": []
   },
   "prod": {
     "be": [],
     "fe": [],
     "ai": [],
-    "mcp": [],
-    "rh": []
+    "mcp": []
   }
 }

@@ -58,8 +58,6 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8200:8200"   # host-local admin access only
-    env_file:
-      - .env
     environment:
       TZ: ${TZ:-Asia/Kolkata}
       # Values below seed OpenBao on boot — the app reads them back at runtime
@@ -83,14 +81,6 @@ services:
       SUPABASE_WEBHOOK_SECRET: ${SUPABASE_WEBHOOK_SECRET}
       RH_API_KEY: ${RH_API_KEY}
       SERVICE_API_KEY: ${SERVICE_API_KEY}
-      RH_SERVICE_URL: ${RH_SERVICE_URL:-http://rh-api:8000}
-      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
-      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
-      APP_ENV: ${APP_ENV:-production}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       # dev namespace (local dev) — DEV_<KEY> overrides the value seeded under
       # secret/data/dev/* (and ai-dev). Leave unset in .env to mirror the uat
       # value (kept as a separate entry). DEV_DATABASE_URL / DEV_DATABASE_URI
@@ -131,11 +121,9 @@ services:
     build: ./talentOS_MCP
     restart: unless-stopped
     environment:
-      TALENTOS_BACKEND_URL: http://be:8001
-      TALENTOS_BACKEND_TOKEN: ${TALENTOS_BACKEND_TOKEN:-}
-      MCP_TRANSPORT: streamable-http
-      MCP_HOST: 0.0.0.0
-      MCP_PORT: "8000"
+      TALENTOS_API_BASE_URL: http://be:8001
+      TALENTOS_API_TIMEOUT: "30"
+      PORT: "8000"
       TZ: ${TZ:-Asia/Kolkata}
     networks:
       - talentos-net
@@ -183,12 +171,15 @@ services:
         condition: service_healthy
       openbao:
         condition: service_healthy
+    env_file:
+      - .env
     volumes:
       - bao-shared:/shared:ro
     environment:
       BAO_ADDR: http://openbao:8200
       BAO_TOKEN_FILE: /shared/be.token
       BAO_REQUIRED: "true"
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
       KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
       KAFKA_TOPIC_EVALUATION_ASYNC: resume.evaluation.async
       KAFKA_TOPIC_EVALUATION_ASYNC_DLQ: resume.evaluation.async.dlq
@@ -198,6 +189,7 @@ services:
       ATS_THRESHOLD_DEFAULT: "70"
       EVALUATION_MAX_ATTEMPTS: "3"
       EVALUATION_MIN_RESUME_CHARS: "100"
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
       TZ: ${TZ:-Asia/Kolkata}
     command: >
       sh -c "
@@ -238,6 +230,8 @@ services:
         condition: service_healthy
       be:
         condition: service_started
+    env_file:
+      - .env
     volumes:
       - bao-shared:/shared:ro
     environment:
@@ -269,6 +263,8 @@ services:
         condition: service_healthy
       be:
         condition: service_started
+    env_file:
+      - .env
     volumes:
       - bao-shared:/shared:ro
     environment:
